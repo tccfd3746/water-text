@@ -1,160 +1,164 @@
-!DOCTYPE html
-html lang=zh-Hant
-head
-    meta charset=UTF-8
-    meta name=viewport content=width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no
-    title📱 消防水源快速定位系統title
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>📱 消防水源定位系統 (單機展示版)</title>
     
-    link rel=stylesheet href=httpsunpkg.comleaflet@1.9.4distleaflet.css 
-    link rel=stylesheet href=httpsunpkg.comleaflet-control-geocoderdistControl.Geocoder.css 
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
     
-    style
-        #map { height 100vh; width 100%; }
-        body, html { margin 0; padding 0; overflow hidden; font-family Microsoft JhengHei, Arial, sans-serif; }
+    <style>
+        #map { height: 100vh; width: 100%; }
+        body, html { margin: 0; padding: 0; overflow: hidden; font-family: "Microsoft JhengHei", Arial, sans-serif; }
         
-         1. 優化搜尋框：加大點擊範圍、加粗紅色邊框增加辨識度 
+        /* 搜尋框優化 */
         .leaflet-control-geocoder {
-            min-width 280px !important;
-            margin-top 15px !important;
-            border 2px solid #d32f2f !important;
-            box-shadow 0 4px 12px rgba(0,0,0,0.4) !important;
+            min-width: 280px !important;
+            margin-top: 15px !important;
+            border: 2px solid #d32f2f !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
+            background-color: white;
         }
         .leaflet-control-geocoder-form input {
-            font-size 18px !important;
-            height 40px;
-            padding-left 10px !important;
+            font-size: 18px !important;
+            height: 40px;
+            padding-left: 10px !important;
         }
 
-         2. 自訂「回到目前位置」的實體化按鈕 
+        /* 跳回目前位置按鈕 */
         .locate-btn {
-            background-color white;
-            width 48px;
-            height 48px;
-            border-radius 50%;
-            display flex;
-            justify-content center;
-            align-items center;
-            cursor pointer;
-            box-shadow 0 2px 8px rgba(0,0,0,0.3);
-            border 2px solid #d32f2f;
-            margin-bottom 25px !important;
-            margin-right 10px !important;
+            background-color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            border: 2px solid #d32f2f;
+            margin-bottom: 25px !important;
+            margin-right: 15px !important;
         }
         .locate-btn img {
-            width 26px;
-            height 26px;
+            width: 28px;
+            height: 28px;
         }
-    style
-head
-body
+    </style>
+</head>
+<body>
 
-    div id=mapdiv
+    <div id="map"></div>
 
-    script src=httpsunpkg.comleaflet@1.9.4distleaflet.jsscript
-    script src=httpsunpkg.comleaflet-control-geocoderdistControl.Geocoder.jsscript
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
 
-    script
-         ============== 1. 地圖初始化 ==============
-         預設中心點設為台中市，並將縮放按鈕移到右下方
-        const map = L.map('map', { zoomControl false }).setView([24.1500, 120.6800], 13); 
-        L.control.zoom({ position 'bottomright' }).addTo(map);
+    <script>
+        // ============== 1. 內建測試圖資 (避免讀取檔案失敗) ==============
+        // 我先在台中市區放了 5 個假的消防栓讓您測試效果
+        const hydrantData = [
+            { lat: 24.1510, lng: 120.6810, name: "測試用：中正路消防栓 (大管徑)" },
+            { lat: 24.1490, lng: 120.6790, name: "測試用：中山路消防栓 (一般)" },
+            { lat: 24.1520, lng: 120.6830, name: "測試用：自由路地下式消防栓" },
+            { lat: 24.1480, lng: 120.6850, name: "測試用：民權路消防栓" },
+            { lat: 24.1540, lng: 120.6780, name: "測試用：五權路消防栓" }
+        ];
 
-        let hydrantData = []; 
+        // ============== 2. 地圖初始化 ==============
+        // 預設將畫面移到台中市區
+        const map = L.map('map', { zoomControl: false }).setView([24.1500, 120.6800], 14); 
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-         載入 OpenStreetMap 底圖
-        L.tileLayer('httpstile.openstreetmap.org{z}{x}{y}.png', {
-            maxZoom 19,
-            attribution '© OpenStreetMap 貢獻者'
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap 貢獻者'
         }).addTo(map);
 
-         ============== 2. 距離計算函式 (Haversine 公式) ==============
+        // ============== 3. 距離計算函式 ==============
         function getDistance(lat1, lon1, lat2, lon2) {
             const R = 6371; 
-            const dLat = (lat2 - lat1)  (Math.PI  180);
-            const dLon = (lon2 - lon1)  (Math.PI  180);
-            const a = Math.sin(dLat  2)  Math.sin(dLat  2) +
-                      Math.cos(lat1  (Math.PI  180))  Math.cos(lat2  (Math.PI  180))  Math.sin(dLon  2)  Math.sin(dLon  2);
-            return R  2  Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const dLat = (lat2 - lat1) * (Math.PI / 180);
+            const dLon = (lon2 - lon1) * (Math.PI / 180);
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         }
 
-         ============== 3. 核心標記邏輯 ==============
+        // ============== 4. 核心功能：標記搜尋點並找出水源 ==============
         function findAndMarkNearestHydrants(lat, lng, sourceName) {
             const centerLatLng = [lat, lng];
             
-             清除圖面上舊的標記 (避免密密麻麻)
-            map.eachLayer(layer = {
+            map.eachLayer(layer => {
                 if (layer instanceof L.Marker) map.removeLayer(layer);
             });
             
-             標記搜尋的目標點 (預設藍色圖示)
-            L.marker(centerLatLng).addTo(map).bindPopup(`b📍 ${sourceName}b`).openPopup();
+            L.marker(centerLatLng).addTo(map).bindPopup(`<b>📍 ${sourceName}</b>`).openPopup();
             
-             【重要功能】平滑移動並放大至該地址 (Zoom Level 17)
-            map.flyTo(centerLatLng, 17, { animate true, duration 1.5 });
+            // 平滑移動動畫
+            map.flyTo(centerLatLng, 16, { animate: true, duration: 1.5 });
             
-             防呆：如果沒有載入資料就不要計算
-            if (hydrantData.length === 0) return;
-
-             計算最近的 5 個消防栓
             const nearestHydrants = hydrantData
-                .map(h = ({ ...h, distance getDistance(lat, lng, h.lat, h.lng) }))
-                .sort((a, b) = a.distance - b.distance)
+                .map(h => ({ ...h, distance: getDistance(lat, lng, h.lat, h.lng) }))
+                .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5);
 
-             設定消防栓為紅色圖示
             const fireHydrantIcon = L.icon({
-                iconUrl 'httpsraw.githubusercontent.compointhileaflet-color-markersmasterimgmarker-icon-2x-red.png',
-                shadowUrl 'httpscdnjs.cloudflare.comajaxlibsleaflet0.7.7imagesmarker-shadow.png',
-                iconSize [25, 41],
-                iconAnchor [12, 41],
-                popupAnchor [1, -34],
-                shadowSize [41, 41]
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
             });
 
-             繪製結果
-            nearestHydrants.forEach((h, i) = {
-                const distM = (h.distance  1000).toFixed(0);
-                 【升級】使用最穩定的 Google Maps 行車導航跨平台網址
-                const googleMapsUrl = `httpswww.google.commapsdirapi=1&destination=${h.lat},${h.lng}&travelmode=driving`;
+            nearestHydrants.forEach((h, i) => {
+                const distM = (h.distance * 1000).toFixed(0);
+                const googleMapsUrl = `http://googleusercontent.com/maps.google.com/?q=${h.lat},${h.lng}&travelmode=driving`;
                 
-                L.marker([h.lat, h.lng], { icon fireHydrantIcon }).addTo(map)
+                L.marker([h.lat, h.lng], { icon: fireHydrantIcon }).addTo(map)
                     .bindPopup(`
-                        div style=width180px;
-                            b style=color#d32f2f; font-size16px;第 ${i + 1} 近水源bbr
-                            名稱：${h.name}br
-                            距離：b${distM} 公尺bbr
-                            a href=${googleMapsUrl} target=_blank 
-                               style=display block; margin-top 12px; padding 10px; background-color #4285F4; color white; text-align center; text-decoration none; border-radius 5px; font-weight bold;
-                               🚗 導航至此水源
-                            a
-                        div
+                        <div style="width:180px;">
+                            <b style="color:#d32f2f; font-size:16px;">第 ${i + 1} 近水源</b><br>
+                            名稱：${h.name}<br>
+                            距離：<b>${distM} 公尺</b><br>
+                            <a href="${googleMapsUrl}" target="_blank" 
+                               style="display: block; margin-top: 12px; padding: 10px; background-color: #4285F4; color: white; text-align: center; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                               🚗 導航至此處
+                            </a>
+                        </div>
                     `);
             });
         }
 
-         ============== 4. 地址搜尋欄位功能 ==============
-        const geocoder = L.Control.geocoder({
-            defaultMarkGeocode false,
-            placeholder 輸入火警地址或地標...,
-            errorMessage 找不到該位置
+        // ============== 5. 地址搜尋功能 (鎖定台灣) ==============
+        L.Control.geocoder({
+            geocoder: L.Control.Geocoder.nominatim({
+                geocodingQueryParams: {
+                    countrycodes: 'tw',
+                    'accept-language': 'zh-TW'
+                }
+            }),
+            defaultMarkGeocode: false,
+            placeholder: "輸入測試地址(如:台中火車站)",
+            errorMessage: "找不到該位置"
         })
         .on('markgeocode', function(e) {
             const center = e.geocode.center;
-             搜尋確認後，將座標傳給核心邏輯，地圖會自動飛過去
-            findAndMarkNearestHydrants(center.lat, center.lng, e.geocode.name);
+            const cleanName = e.geocode.name.split(',')[0];
+            findAndMarkNearestHydrants(center.lat, center.lng, cleanName);
         })
         .addTo(map);
 
-         ============== 5. 新增「跳回目前位置」按鈕 ==============
+        // ============== 6. 「跳回目前位置」按鈕 ==============
         const LocateControl = L.Control.extend({
-            options { position 'bottomright' },
-            onAdd function (map) {
+            options: { position: 'bottomright' },
+            onAdd: function (map) {
                 const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control locate-btn');
-                container.innerHTML = 'img src=httpscdn-icons-png.flaticon.com512854854878.png alt=定位';
-                container.title = 回到目前位置;
-                
+                container.innerHTML = '<img src="https://cdn-icons-png.flaticon.com/512/854/854878.png" alt="定位">';
+                container.title = "定位";
                 container.onclick = function(e) {
-                    e.stopPropagation();  避免點擊穿透到地圖
+                    e.stopPropagation();
                     requestLocation();
                 };
                 return container;
@@ -165,35 +169,20 @@ body
         function requestLocation() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
-                    (pos) = findAndMarkNearestHydrants(pos.coords.latitude, pos.coords.longitude, 您的目前位置),
-                    () = alert(定位失敗，請確認手機 GPS 與網頁定位權限是否開啟),
-                    { enableHighAccuracy true }
+                    (pos) => findAndMarkNearestHydrants(pos.coords.latitude, pos.coords.longitude, "目前位置"),
+                    // 若被瀏覽器擋下，就改用預設的台中座標展示
+                    () => {
+                        alert("因為您是在電腦單機開啟，GPS被阻擋。將為您展示台中市區的預設定位點。");
+                        findAndMarkNearestHydrants(24.1500, 120.6800, "預設模擬位置");
+                    },
+                    { enableHighAccuracy: true, timeout: 5000 }
                 );
             }
         }
 
-         ============== 6. 啟動與載入資料 ==============
-        async function initApp() {
-            try {
-                 讀取同資料夾下的 hydrants.geojson
-                const response = await fetch('hydrants.geojson');
-                if (!response.ok) throw new Error();
-                const data = await response.json();
-                
-                hydrantData = data.features.map(f = ({
-                    lat f.geometry.coordinates[1],
-                    lng f.geometry.coordinates[0],
-                    name f.properties.name  f.properties.Name  '未知消防栓'
-                }));
-                
-                 一開啟網頁，自動執行一次定位
-                requestLocation();
-            } catch (e) {
-                console.warn(無法載入 hydrants.geojson，目前為純地圖與搜尋模式。);
-            }
-        }
+        // 啟動系統
+        setTimeout(requestLocation, 500); 
 
-        initApp();
-    script
-body
-html
+    </script>
+</body>
+</html>
